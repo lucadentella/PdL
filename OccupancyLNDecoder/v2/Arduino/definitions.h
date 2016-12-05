@@ -1,5 +1,5 @@
-#define VERSION       "1.0"
-#define SET_DEFAULTS  false
+#define DEVICE_ID       0x01
+#define DEVICE_VERSION  0x02
 
 #define LNET_TX_PIN   7
 #define LNET_RX_PIN   8
@@ -16,7 +16,7 @@
 #define UPD_FREQUENCY_LOCATION     3
 #define SENSOR_READS_LOCATION      4
  
-#define DEFAULT_BASE_ADDRESS       121
+#define DEFAULT_BASE_ADDRESS       1
 #define DEFAULT_EXT_ADDRESS        0
 #define DEFAULT_BROADCAST_ADDRESS  255
 #define DEFAULT_UPD_FREQUENCY      10

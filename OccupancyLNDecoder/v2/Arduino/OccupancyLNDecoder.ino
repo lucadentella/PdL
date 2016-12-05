@@ -1,20 +1,18 @@
-// Import libraries and definitions
+// import libraries and definitions
 #include <LocoNet.h>
 #include <EEPROM.h>
+#include <PacketSerial.h>
+#include "comm_protocol.h"
 #include "definitions.h"
 
+// global objects
+PacketSerial serial;
 
 void setup() {
 
-  // if requested, set the default values in EEPROM
-  if(SET_DEFAULTS) {
-
-    EEPROM.write(BASE_ADDRESS_LOCATION, DEFAULT_BASE_ADDRESS);
-    EEPROM.write(EXT_ADDRESS_LOCATION, DEFAULT_EXT_ADDRESS);
-    EEPROM.write(BROADCAST_ADDRESS_LOCATION, DEFAULT_BROADCAST_ADDRESS);
-    EEPROM.write(UPD_FREQUENCY_LOCATION, DEFAULT_UPD_FREQUENCY);
-    EEPROM.write(SENSOR_READS_LOCATION, DEFAULT_SENSOR_READS);
-  }
+  // initialize serial communication and attach the handler function for incoming data
+  serial.setPacketHandler(&onSerialPacket);
+  serial.begin(9600);
 
   // configure sensor pins and set default sensor state
   for(int i = 0; i < 8; i++) {
@@ -29,6 +27,34 @@ void setup() {
   // confiure button pin
   pinMode(BUTTON_PIN, INPUT);
 
+  // factory reset: button pin is pressed
+  if(digitalRead(BUTTON_PIN) == LOW) {
+
+    // debounce
+    delay(50);
+    
+    if(digitalRead(BUTTON_PIN) == LOW) {
+
+      // reset all the configuration in EEPROM using the default values      
+      EEPROM.write(BASE_ADDRESS_LOCATION, DEFAULT_BASE_ADDRESS);
+      EEPROM.write(EXT_ADDRESS_LOCATION, DEFAULT_EXT_ADDRESS);
+      EEPROM.write(BROADCAST_ADDRESS_LOCATION, DEFAULT_BROADCAST_ADDRESS);
+      EEPROM.write(UPD_FREQUENCY_LOCATION, DEFAULT_UPD_FREQUENCY);
+      EEPROM.write(SENSOR_READS_LOCATION, DEFAULT_SENSOR_READS);
+
+      // notify the factory reset with three fast blinks
+      for(int i = 0; i < 3; i++) {
+        digitalWrite(LED_PIN, HIGH);
+        delay(100);
+        digitalWrite(LED_PIN, LOW);
+        delay(200);
+      }
+
+      // notify via serial communication
+      sendByte(MSG_FACTORY_RESET);
+    }
+  }
+  
   // set variable values from EEPROM
   myAddress = EEPROM.read(BASE_ADDRESS_LOCATION) + 256 * EEPROM.read(EXT_ADDRESS_LOCATION);
   broadcastAddress = EEPROM.read(BROADCAST_ADDRESS_LOCATION);
@@ -41,21 +67,6 @@ void setup() {
   // initialize Loconet library and buffer
   LocoNet.init(LNET_TX_PIN);
   initLnBuf(&LnTxBuffer);
-
-  // initialize serial communication
-  Serial.begin(57600);
-  Serial.print("PDL OccupancyLNDecoder ");
-  Serial.println(VERSION);
-  Serial.println();
-  Serial.print("My Address: ");
-  Serial.println(myAddress);
-  Serial.print("Broadcast Address: ");
-  Serial.println(broadcastAddress);
-  Serial.print("Update Frequency: ");
-  Serial.println(updateFrequency);
-  Serial.print("Sensor reads: ");
-  Serial.println(sensorReads); 
-  Serial.println();
 
   // read and send the initial state of all the sensors
   readSensors();
@@ -96,6 +107,9 @@ void loop() {
 
   // check if the button was pressed
   checkButton();
+
+  // call the packetSerial update method
+  serial.update();
 }
 
 void checkButton() {
@@ -148,10 +162,7 @@ void sendChangedSensors() {
     if(lastSensorStates[i] != newSensorStates[i]) {
       LocoNet.reportSensor(myAddress + i, newSensorStates[i]);
       lastSensorStates[i] = newSensorStates[i];
-      Serial.print("New state for sensor ");
-      Serial.print(i);
-      Serial.print(": ");
-      Serial.println(newSensorStates[i]);
+      notifySensorChanged(i, newSensorStates[i]);
     }
   }
 }
@@ -159,8 +170,10 @@ void sendChangedSensors() {
 void sendAllSensors() {
 
   readSensors();
-  for(int i = 0; i < 8; i++)
+  for(int i = 0; i < 8; i++) {
     LocoNet.reportSensor(myAddress + i, newSensorStates[i]);
+    notifySensorChanged(i, newSensorStates[i]);
+  }
 }
 
 void notifySwitchRequest( uint16_t Address, uint8_t Output, uint8_t Direction ) {
@@ -186,3 +199,4 @@ void notifySwitchRequest( uint16_t Address, uint8_t Output, uint8_t Direction ) 
     }   
   }
 }
+
